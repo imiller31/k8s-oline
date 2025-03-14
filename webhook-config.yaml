@@ -1,0 +1,17 @@
+apiVersion: v1
+kind: Config
+clusters:
+- name: my-cluster
+  cluster:
+    certificate-authority: /files/webhook-cert.pem
+    server: https://k8s-oline:8443/authorize
+users:
+- name: api-server
+  user:
+    token: test-token
+current-context: my-cluster
+contexts:
+- context:
+    cluster: my-cluster
+    user: api-server
+  name: my-cluster

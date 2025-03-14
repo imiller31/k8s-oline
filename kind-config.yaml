@@ -1,0 +1,19 @@
+kind: Cluster
+apiVersion: kind.x-k8s.io/v1alpha4
+nodes:
+- role: control-plane
+  extraMounts:
+  - hostPath: /home/ismille/repos/k8s-oline/
+    containerPath: /files
+  kubeadmConfigPatches:
+  - |
+    kind: ClusterConfiguration
+    apiServer:
+        extraArgs:
+          enable-admission-plugins: NodeRestriction,MutatingAdmissionWebhook,ValidatingAdmissionWebhook
+          authorization-config: "/files/multi-webhook-config.yaml"
+        extraVolumes:
+        - name: api-server-basic-auth-files
+          hostPath: "/files"
+          mountPath: "/files"
+          readOnly: true

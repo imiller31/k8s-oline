@@ -1,0 +1,22 @@
+apiVersion: apiserver.config.k8s.io/v1beta1
+kind: AuthorizationConfiguration
+authorizers:
+  - type: Webhook
+    name: k8s-oline
+    webhook:
+      unauthorizedTTL: 30s
+      timeout: 3s
+      subjectAccessReviewVersion: v1
+      matchConditionSubjectAccessReviewVersion: v1
+      failurePolicy: Deny
+      connectionInfo:
+        type: KubeConfigFile
+        kubeConfigFile: /files/webhook-config.yaml
+      matchConditions:
+      - expression: has(request.resourceAttributes)
+      # only intercept update, patch, delete, or deletecollection requests
+      - expression: request.resourceAttributes.verb in ['update', 'patch', 'delete','deletecollection']
+  - type: Node
+    name: node
+  - type: RBAC
+    name: rbac
