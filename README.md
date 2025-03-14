@@ -2,6 +2,8 @@
 
 This is a custom Kubernetes authorization webhook that implements specific authorization rules for protecting resources with configurable prefixes. The webhook is implemented in Go and integrates with Kubernetes using the authorization webhook mechanism.
 
+WARNING: This is a partially vibe-coded PoC. This shouldn't be used by anyone, anywhere, for anything.
+
 ## Features
 
 - Protects resources with configurable prefix (default: `aks-automatic-`)
