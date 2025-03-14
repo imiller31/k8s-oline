@@ -16,8 +16,8 @@ func TestWebhookServer_HandleAuthorize(t *testing.T) {
 		Port:            "8443",
 		TLSCertFile:     "test-cert.pem",
 		TLSKeyFile:      "test-key.pem",
-		ProtectedPrefix: "test-prefix-",
-		PrivilegedUser:  "admin",
+		ProtectedPrefix: "aks-automatic-",
+		PrivilegedUser:  "support",
 	}
 
 	server := &WebhookServer{
@@ -38,7 +38,7 @@ func TestWebhookServer_HandleAuthorize(t *testing.T) {
 					User: "regular-user",
 					ResourceAttributes: &authorizationv1.ResourceAttributes{
 						Verb:     "get",
-						Name:     "test-prefix-resource",
+						Name:     "aks-automatic-resource",
 						Resource: "pods",
 					},
 				},
@@ -54,23 +54,23 @@ func TestWebhookServer_HandleAuthorize(t *testing.T) {
 					User: "regular-user",
 					ResourceAttributes: &authorizationv1.ResourceAttributes{
 						Verb:     "delete",
-						Name:     "test-prefix-resource",
+						Name:     "aks-automatic-resource",
 						Resource: "pods",
 					},
 				},
 			},
 			expectedStatus: http.StatusOK,
 			expectedResult: false,
-			expectedReason: "User 'regular-user' is not authorized to delete resources with prefix 'test-prefix-'. Only 'admin' users can perform this operation.",
+			expectedReason: "User 'regular-user' is not authorized to delete resources with prefix 'aks-automatic-'. Only 'support' users or members of system:masters/system:nodes groups can perform this operation.",
 		},
 		{
 			name: "allow delete on protected resource for privileged user",
 			request: &authorizationv1.SubjectAccessReview{
 				Spec: authorizationv1.SubjectAccessReviewSpec{
-					User: "admin",
+					User: "support",
 					ResourceAttributes: &authorizationv1.ResourceAttributes{
 						Verb:     "delete",
-						Name:     "test-prefix-resource",
+						Name:     "aks-automatic-resource",
 						Resource: "pods",
 					},
 				},
@@ -78,6 +78,40 @@ func TestWebhookServer_HandleAuthorize(t *testing.T) {
 			expectedStatus: http.StatusOK,
 			expectedResult: true,
 			expectedReason: "Request allowed by authorization webhook",
+		},
+		{
+			name: "allow delete on protected resource for system:masters member",
+			request: &authorizationv1.SubjectAccessReview{
+				Spec: authorizationv1.SubjectAccessReviewSpec{
+					User:   "kubernetes-admin",
+					Groups: []string{"system:masters"},
+					ResourceAttributes: &authorizationv1.ResourceAttributes{
+						Verb:     "delete",
+						Name:     "aks-automatic-resource",
+						Resource: "pods",
+					},
+				},
+			},
+			expectedStatus: http.StatusOK,
+			expectedResult: true,
+			expectedReason: "User 'kubernetes-admin' is authorized to delete protected resources as a member of system:masters group",
+		},
+		{
+			name: "allow delete on protected resource for system:nodes member",
+			request: &authorizationv1.SubjectAccessReview{
+				Spec: authorizationv1.SubjectAccessReviewSpec{
+					User:   "system:node:worker-1",
+					Groups: []string{"system:nodes"},
+					ResourceAttributes: &authorizationv1.ResourceAttributes{
+						Verb:     "delete",
+						Name:     "aks-automatic-resource",
+						Resource: "pods",
+					},
+				},
+			},
+			expectedStatus: http.StatusOK,
+			expectedResult: true,
+			expectedReason: "User 'system:node:worker-1' is authorized to delete protected resources as a member of system:nodes group",
 		},
 		{
 			name: "allow delete on non-protected resource for regular user",
@@ -114,6 +148,57 @@ func TestWebhookServer_HandleAuthorize(t *testing.T) {
 					ResourceAttributes: &authorizationv1.ResourceAttributes{
 						Verb:     "delete",
 						Resource: "pods",
+					},
+				},
+			},
+			expectedStatus: http.StatusOK,
+			expectedResult: true,
+			expectedReason: "Request allowed by authorization webhook",
+		},
+		{
+			name: "block impersonation of system:masters group via userextras",
+			request: &authorizationv1.SubjectAccessReview{
+				Spec: authorizationv1.SubjectAccessReviewSpec{
+					User: "regular-user",
+					ResourceAttributes: &authorizationv1.ResourceAttributes{
+						Verb:        "impersonate",
+						Group:       "authentication.k8s.io",
+						Resource:    "userextras",
+						Subresource: "groups",
+						Name:        "system:masters",
+					},
+				},
+			},
+			expectedStatus: http.StatusOK,
+			expectedResult: false,
+			expectedReason: "Impersonation of system:masters group is not allowed",
+		},
+		{
+			name: "block direct impersonation of system:masters group",
+			request: &authorizationv1.SubjectAccessReview{
+				Spec: authorizationv1.SubjectAccessReviewSpec{
+					User: "regular-user",
+					NonResourceAttributes: &authorizationv1.NonResourceAttributes{
+						Verb: "impersonate",
+						Path: "/api/v1/users/~/groups/system:masters",
+					},
+				},
+			},
+			expectedStatus: http.StatusOK,
+			expectedResult: false,
+			expectedReason: "Direct impersonation of system:masters group is not allowed",
+		},
+		{
+			name: "allow impersonation of non-privileged group",
+			request: &authorizationv1.SubjectAccessReview{
+				Spec: authorizationv1.SubjectAccessReviewSpec{
+					User: "regular-user",
+					ResourceAttributes: &authorizationv1.ResourceAttributes{
+						Verb:        "impersonate",
+						Group:       "authentication.k8s.io",
+						Resource:    "userextras",
+						Subresource: "groups",
+						Name:        "regular-group",
 					},
 				},
 			},

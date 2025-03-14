@@ -8,6 +8,7 @@ WARNING: This is a partially vibe-coded PoC. This shouldn't be used by anyone, a
 
 - Protects resources with configurable prefix (default: `aks-automatic-`)
 - Configurable privileged user (default: `support`) allowed to delete protected resources
+- Blocks unauthorized impersonation of system:masters group
 - Provides detailed error messages when access is denied
 - Uses TLS for secure communication
 - Runs as a local container alongside a Kind cluster
@@ -87,9 +88,17 @@ The webhook implements the following authorization rules:
 
 1. All operations are allowed by default
 2. DELETE operations on resources with names starting with the protected prefix are:
-   - Denied for all users except the configured privileged user
+   - Allowed for:
+     - The configured privileged user (default: `support`)
+     - Members of the `system:masters` group
+     - Members of the `system:nodes` group
+   - Denied for all other users
    - When denied, a detailed error message is provided
-   - The denial reason includes the username and explanation
+   - The denial reason includes the username and explanation of which users/groups are allowed
+3. Impersonation of the system:masters group is:
+   - Blocked for all users
+   - Applies to both direct group impersonation and userextras impersonation
+   - Returns clear error messages explaining why the impersonation was denied
 
 ## Architecture
 
@@ -139,3 +148,4 @@ docker exec auth-webhook-test-control-plane crictl logs $(docker exec auth-webho
 - Authorization decisions are logged for audit purposes
 - Detailed error messages help with debugging while maintaining security
 - Configuration through environment variables allows for secure deployment in different environments
+- Prevents privilege escalation through system:masters group impersonation

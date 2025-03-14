@@ -84,10 +84,12 @@ func (s *WebhookServer) handleAuthorize(w http.ResponseWriter, r *http.Request) 
 func (s *WebhookServer) processAuthRequest(sar *authorizationv1.SubjectAccessReview) (bool, string) {
 	// Extract relevant information from the request
 	user := sar.Spec.User
+	groups := sar.Spec.Groups
 	resourceAttributes := sar.Spec.ResourceAttributes
+	nonResourceAttributes := sar.Spec.NonResourceAttributes
 
 	// Log the request details
-	log.Printf("Processing request for user: %s", user)
+	log.Printf("Processing request for user: %s, groups: %v", user, groups)
 	if resourceAttributes != nil {
 		log.Printf("Resource attributes: Group=%s, Version=%s, Resource=%s, Name=%s, Namespace=%s, Verb=%s",
 			resourceAttributes.Group,
@@ -98,6 +100,26 @@ func (s *WebhookServer) processAuthRequest(sar *authorizationv1.SubjectAccessRev
 			resourceAttributes.Verb)
 	}
 
+	// Check for impersonation attempts
+	if resourceAttributes != nil &&
+		resourceAttributes.Resource == "users" &&
+		(resourceAttributes.Verb == "impersonate" || resourceAttributes.Verb == "create") {
+		// Block attempts to impersonate system:masters group
+		if resourceAttributes.Group == "authentication.k8s.io" &&
+			resourceAttributes.Resource == "userextras" &&
+			resourceAttributes.Subresource == "groups" &&
+			strings.Contains(resourceAttributes.Name, "system:masters") {
+			return false, "Impersonation of system:masters group is not allowed"
+		}
+	}
+
+	// Check for direct group impersonation
+	if nonResourceAttributes != nil &&
+		nonResourceAttributes.Verb == "impersonate" &&
+		nonResourceAttributes.Path == "/api/v1/users/~/groups/system:masters" {
+		return false, "Direct impersonation of system:masters group is not allowed"
+	}
+
 	// Allow all requests by default
 	allowed := true
 	reason := "Request allowed by authorization webhook"
@@ -106,10 +128,18 @@ func (s *WebhookServer) processAuthRequest(sar *authorizationv1.SubjectAccessRev
 	if resourceAttributes != nil && resourceAttributes.Verb == "delete" {
 		// Check if the resource name starts with the protected prefix
 		if strings.HasPrefix(resourceAttributes.Name, s.config.ProtectedPrefix) {
+			// Allow if user is in system:masters or system:node groups
+			for _, group := range groups {
+				if group == "system:masters" || group == "system:nodes" {
+					log.Printf("Allowing delete operation for user %s in privileged group %s", user, group)
+					return true, fmt.Sprintf("User '%s' is authorized to delete protected resources as a member of %s group", user, group)
+				}
+			}
+
 			// Block delete operations on protected resources unless the user is privileged
 			if user != s.config.PrivilegedUser {
 				allowed = false
-				reason = fmt.Sprintf("User '%s' is not authorized to delete resources with prefix '%s'. Only '%s' users can perform this operation.",
+				reason = fmt.Sprintf("User '%s' is not authorized to delete resources with prefix '%s'. Only '%s' users or members of system:masters/system:nodes groups can perform this operation.",
 					user, s.config.ProtectedPrefix, s.config.PrivilegedUser)
 				log.Printf("Blocking delete operation on protected resource for user: %s", user)
 			} else {

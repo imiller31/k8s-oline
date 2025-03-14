@@ -16,6 +16,19 @@ authorizers:
       - expression: has(request.resourceAttributes)
       # only intercept update, patch, delete, or deletecollection requests
       - expression: request.resourceAttributes.verb in ['update', 'patch', 'delete','deletecollection']
+  # - type: Webhook
+  #   name: guard
+  #   webhook:
+  #     unauthorizedTTL: 30s
+  #     timeout: 3s
+  #     subjectAccessReviewVersion: v1
+  #     matchConditionSubjectAccessReviewVersion: v1
+  #     failurePolicy: Allow
+  #     connectionInfo:
+  #       type: KubeConfigFile
+  #       kubeConfigFile: /files/guard-webhook.yaml
+  #     matchConditions:
+  #     - expression: !has(request.resourceAttributes)
   - type: Node
     name: node
   - type: RBAC
