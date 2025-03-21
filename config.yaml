@@ -1,0 +1,7 @@
+port: "8443"
+tlsCertFile: "/app/webhook-cert.pem"
+tlsKeyFile: "/app/webhook-key.pem"
+protectedPrefix: "aks-automatic-"
+privilegedUser: "support"
+celRules:
+  - "!(has(resourceAttributes.verb) && has(resourceAttributes.name) && resourceAttributes.verb == 'delete' && resourceAttributes.name.startsWith('aks-automatic-'))"

@@ -12,6 +12,7 @@ WARNING: This is a partially vibe-coded PoC. This shouldn't be used by anyone, a
 - Provides detailed error messages when access is denied
 - Uses TLS for secure communication
 - Runs as a local container alongside a Kind cluster
+- Supports CEL (Common Expression Language) rules for flexible authorization policies
 
 ## Prerequisites
 
@@ -40,27 +41,71 @@ cd <repository-directory>
 
 ## Configuration
 
-The webhook can be configured using environment variables:
+The webhook can be configured using environment variables or a YAML configuration file. Environment variables take precedence over YAML configuration.
 
-| Variable | Description | Default |
-|----------|-------------|---------|
-| `PORT` | Port the webhook listens on | `8443` |
-| `TLS_CERT_FILE` | Path to TLS certificate file | `/app/webhook-cert.pem` |
-| `TLS_KEY_FILE` | Path to TLS key file | `/app/webhook-key.pem` |
-| `PROTECTED_PREFIX` | Prefix of resource names to protect | `aks-automatic-` |
-| `PRIVILEGED_USER` | Username allowed to delete protected resources | `support` |
+### Environment Variables
 
-You can override these when running the container:
+- `PORT`: Port to listen on (default: "8080")
+- `TLS_CERT_FILE`: Path to TLS certificate file (required)
+- `TLS_KEY_FILE`: Path to TLS key file (required)
+- `PROTECTED_PREFIX`: Prefix for protected resources (default: "aks-automatic-")
+- `PRIVILEGED_USER`: Username for privileged operations (default: "support")
+- `CEL_RULES`: Semicolon-separated list of CEL expressions for authorization (default: "")
+- `CONFIG_FILE`: Path to YAML configuration file (optional)
+
+### YAML Configuration
+
+You can also configure the webhook using a YAML file. Set the `CONFIG_FILE` environment variable to point to your YAML configuration file:
+
+```yaml
+port: 8443
+tlsCertFile: "/path/to/cert.pem"
+tlsKeyFile: "/path/to/key.pem"
+protectedPrefix: "custom-"
+privilegedUser: "admin"
+celRules:
+  - "'system:masters' in groups"
+  - "!(resourceAttributes != null && resourceAttributes.verb == 'delete' && resourceAttributes.name.startsWith('custom-'))"
+```
+
+Example command with YAML configuration:
 ```bash
 docker run -d \
-  --name k8s-oline \
-  --network kind \
   -p 8443:8443 \
-  -v "$(pwd)/webhook-cert.pem:/app/webhook-cert.pem:ro" \
-  -v "$(pwd)/webhook-key.pem:/app/webhook-key.pem:ro" \
-  -e PROTECTED_PREFIX=custom-prefix- \
-  -e PRIVILEGED_USER=admin \
-  k8s-oline:latest
+  -v /path/to/config.yaml:/config.yaml \
+  -e CONFIG_FILE=/config.yaml \
+  -e TLS_CERT_FILE=/path/to/cert.pem \
+  -e TLS_KEY_FILE=/path/to/key.pem \
+  k8s-auth-webhook
+```
+
+## CEL Rules
+
+The webhook supports CEL (Common Expression Language) rules for flexible authorization policies. CEL rules are boolean expressions that determine whether a request should be allowed. Multiple rules can be specified, separated by semicolons. All rules must evaluate to true for the request to be allowed.
+
+Available variables in CEL expressions:
+- `request`: The full SubjectAccessReview request
+- `user`: The username making the request
+- `groups`: List of groups the user belongs to
+- `resourceAttributes`: Resource attributes of the request (if any)
+- `nonResourceAttributes`: Non-resource attributes of the request (if any)
+
+Example CEL rules:
+```bash
+# Only allow admin user
+user == 'admin'
+
+# Allow users in system:masters group
+'system:masters' in groups
+
+# Allow all operations except delete on protected resources
+!(resourceAttributes != null && resourceAttributes.verb == 'delete' && resourceAttributes.name.startsWith('aks-automatic-'))
+
+# Allow specific namespace access
+resourceAttributes != null && resourceAttributes.namespace == 'prod'
+
+# Block access to specific resources
+!(resourceAttributes != null && resourceAttributes.resource == 'secrets' && resourceAttributes.name.startsWith('prod-'))
 ```
 
 ## Testing the Webhook
@@ -86,8 +131,9 @@ kubectl describe pod aks-automatic-test
 
 The webhook implements the following authorization rules:
 
-1. All operations are allowed by default
-2. DELETE operations on resources with names starting with the protected prefix are:
+1. CEL rules are evaluated first (if configured)
+2. All operations are allowed by default
+3. DELETE operations on resources with names starting with the protected prefix are:
    - Allowed for:
      - The configured privileged user (default: `support`)
      - Members of the `system:masters` group
@@ -95,7 +141,7 @@ The webhook implements the following authorization rules:
    - Denied for all other users
    - When denied, a detailed error message is provided
    - The denial reason includes the username and explanation of which users/groups are allowed
-3. Impersonation of the system:masters group is:
+4. Impersonation of the system:masters group is:
    - Blocked for all users
    - Applies to both direct group impersonation and userextras impersonation
    - Returns clear error messages explaining why the impersonation was denied
@@ -149,3 +195,4 @@ docker exec auth-webhook-test-control-plane crictl logs $(docker exec auth-webho
 - Detailed error messages help with debugging while maintaining security
 - Configuration through environment variables allows for secure deployment in different environments
 - Prevents privilege escalation through system:masters group impersonation
+- CEL rules provide flexible but safe authorization policies

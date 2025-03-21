@@ -67,7 +67,7 @@ docker build -t k8s-oline:latest .
 echo "Deleting existing Kind cluster..."
 kind delete cluster --name k8s-oline-test
 
-# Run the webhook container
+# Run the webhook container with configuration
 echo "Starting webhook container..."
 docker run -d \
   --name k8s-oline \
@@ -75,9 +75,9 @@ docker run -d \
   -p 8443:8443 \
   -v "$(pwd)/webhook-cert.pem:/app/webhook-cert.pem:ro" \
   -v "$(pwd)/webhook-key.pem:/app/webhook-key.pem:ro" \
-  -e TLS_CERT_FILE=/app/webhook-cert.pem \
-  -e TLS_KEY_FILE=/app/webhook-key.pem \
-  k8s-oline:latest
+  -v "$(pwd)/config.yaml:/app/config.yaml:ro" \
+  k8s-oline:latest \
+  ./webhook -config=/app/config.yaml
 
 # Create Kind cluster
 echo "Creating Kind cluster..."
@@ -86,3 +86,5 @@ kind create cluster --config kind-config.yaml --name k8s-oline-test
 # Wait for the cluster to be ready
 echo "Waiting for cluster to be ready..."
 kubectl wait --for=condition=ready node --all --timeout=120s
+
+echo "Cluster setup complete. Audit logs will be available at /var/log/kubernetes/audit.log"

@@ -23,17 +23,17 @@ WORKDIR /app
 # Copy the binary from builder
 COPY --from=builder /app/webhook .
 
+# Create directory for configuration
+RUN mkdir -p /app/config
+
+# Copy default configuration
+COPY config.yaml /app/config/default.yaml
+
 # Copy TLS certificates
 COPY webhook-cert.pem .
 COPY webhook-key.pem .
 
-# Set environment variables
-ENV PORT=8443
-ENV TLS_CERT_FILE=/app/webhook-cert.pem
-ENV TLS_KEY_FILE=/app/webhook-key.pem
-ENV PROTECTED_PREFIX=aks-automatic-
-ENV PRIVILEGED_USER=support
-
 EXPOSE 8443
 
-CMD ["./webhook"]
+# Use the default configuration if no config file is mounted
+CMD ["./webhook", "--config", "/app/config/default.yaml"]

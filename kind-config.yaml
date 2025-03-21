@@ -3,17 +3,23 @@ apiVersion: kind.x-k8s.io/v1alpha4
 nodes:
 - role: control-plane
   extraMounts:
-  - hostPath: /home/ismille/repos/k8s-oline/
+  - hostPath: ./
     containerPath: /files
   kubeadmConfigPatches:
   - |
     kind: ClusterConfiguration
     apiServer:
-        extraArgs:
-          enable-admission-plugins: NodeRestriction,MutatingAdmissionWebhook,ValidatingAdmissionWebhook
-          authorization-config: "/files/multi-webhook-config.yaml"
-        extraVolumes:
+      extraArgs:
+        enable-admission-plugins: NodeRestriction,MutatingAdmissionWebhook,ValidatingAdmissionWebhook
+        authorization-config: /files/multi-webhook-config.yaml
+        audit-log-path: /var/log/kubernetes/kube-apiserver-audit.log
+        audit-policy-file: /files/audit-policy.yaml
+      extraVolumes:
         - name: api-server-basic-auth-files
           hostPath: "/files"
           mountPath: "/files"
-          readOnly: true
+        - name: "audit-logs"
+          hostPath: "/var/log/kubernetes"
+          mountPath: "/var/log/kubernetes"
+          readOnly: false
+          pathType: DirectoryOrCreate

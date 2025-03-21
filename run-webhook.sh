@@ -23,9 +23,9 @@ docker run -d \
   -p 8443:8443 \
   -v "$(pwd)/webhook-cert.pem:/app/webhook-cert.pem:ro" \
   -v "$(pwd)/webhook-key.pem:/app/webhook-key.pem:ro" \
-  -e TLS_CERT_FILE=/app/webhook-cert.pem \
-  -e TLS_KEY_FILE=/app/webhook-key.pem \
-  k8s-oline:latest
+  -v "$(pwd)/config.yaml:/app/config.yaml:ro" \
+  k8s-oline:latest \
+  -config=/app/config.yaml
 
 echo "Webhook server is running in Docker container 'k8s-oline'"
 echo "Tailing logs (Ctrl+C to stop)..."
